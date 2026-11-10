@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# 运行产物（报告保留，缓存不提交）
+out/llm_cache*.json
+out/report_ui.md
+
+# 本机启动脚本（写死了 C:\Users\ZC 路径，不适合公开）
+*.bat
