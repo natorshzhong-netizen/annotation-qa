@@ -1,0 +1,39 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dev dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest scikit-learn krippendorff statsmodels
+
+      - name: Unit tests
+        run: python -m pytest -q
+
+      - name: Attribution eval (synthetic ground truth)
+        if: matrix.python-version == '3.12'
+        run: python eval/run_attribution_eval.py --seeds 20 --items 300 --min-macro-f1 0.95
+
+      - name: Run on public dataset sample
+        if: matrix.python-version == '3.12'
+        run: |
+          python -m src --data-dir benchmarks/data/go_emotions --allow-missing --out /tmp/report.md
+          python -m src --data-dir benchmarks/data/hatexplain --allow-missing --out /tmp/report2.md

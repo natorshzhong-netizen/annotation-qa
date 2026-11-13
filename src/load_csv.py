@@ -15,8 +15,12 @@ import csv
 from pathlib import Path
 
 
-def load_from_csv(path) -> tuple[dict[str, str], dict[str, dict[str, str]]]:
-    """返回 (items, anns)，和 load.py 里的结构一致。"""
+def load_from_csv(path, allow_missing: bool = False) -> tuple[dict[str, str], dict[str, dict[str, str]]]:
+    """返回 (items, anns)，和 load.py 里的结构一致。
+
+    allow_missing=True 时允许标注者漏标（真实众包数据常见）；
+    每条样本仍然至少要有 2 个人标过。
+    """
     path = Path(path)
     items: dict[str, str] = {}
     anns: dict[str, dict[str, str]] = {}
@@ -43,17 +47,29 @@ def load_from_csv(path) -> tuple[dict[str, str], dict[str, dict[str, str]]]:
                 raise ValueError(f"第 {n} 行：{iid} 的文本和前面不一致")
 
             items[iid] = text
-            anns.setdefault(who, {})[iid] = label
+            target = anns.setdefault(who, {})
+            if iid in target:
+                raise ValueError(f"第 {n} 行：标注者 {who} 对 {iid} 重复标注")
+            target[iid] = label
 
     if not items:
         raise ValueError("CSV 里没有数据")
+    if len(anns) < 2:
+        raise ValueError("至少需要 2 个标注者才能算一致性")
 
-    # 每个人必须标全，否则 kappa 没法算
     ids = set(items)
-    for who, a in anns.items():
-        if set(a) != ids:
-            missing = sorted(ids - set(a))[:5]
-            raise ValueError(f"标注者 {who} 漏标了 {len(ids - set(a))} 条，例如 {missing}")
+    if not allow_missing:
+        for who, a in anns.items():
+            if set(a) != ids:
+                missing = sorted(ids - set(a))[:5]
+                raise ValueError(
+                    f"标注者 {who} 漏标了 {len(ids - set(a))} 条，例如 {missing}。"
+                    "真实漏标数据请传 allow_missing=True。"
+                )
+
+    thin = [i for i in sorted(ids) if sum(i in a for a in anns.values()) < 2]
+    if thin:
+        raise ValueError(f"{len(thin)} 条样本不足 2 个标注：{thin[:5]}")
 
     return items, anns
 

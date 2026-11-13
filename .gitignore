@@ -9,3 +9,13 @@ out/report_ui.md
 
 # 本机启动脚本（写死了 C:\Users\ZC 路径，不适合公开）
 *.bat
+
+# 公开数据集的原始文件与全量转换结果（体积大，许可证各异，不提交）
+benchmarks/raw/
+benchmarks/data_full/
+
+# 评测中间产物
+eval/generated/
+docs/screenshots/*.html
+.pytest_cache/
+.ruff_cache/

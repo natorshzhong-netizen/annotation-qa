@@ -1,0 +1,19 @@
+{
+  "dataset": "HateXplain",
+  "source": "https://github.com/hate-alert/HateXplain",
+  "license": "MIT",
+  "citation": "Mathew et al., 2020, arXiv:2012.10289",
+  "conversion": "每条帖子取 3 位标注者的标签；保留标注数 >= 20 的标注者；每条帖子至少保留 2 位标注者。",
+  "labels_origin": "normal / offensive / hatespeech",
+  "identity_tracking": true,
+  "note": "标注者 ID 来自原始 annotator_id，跨帖子保持一致。",
+  "items": 1000,
+  "annotators": 157,
+  "annotations": 2968,
+  "annotations_per_item": 2.97,
+  "annotator_annotation_counts": {
+    "min": 1,
+    "median": 6,
+    "max": 259
+  }
+}

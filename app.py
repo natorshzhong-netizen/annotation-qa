@@ -23,12 +23,12 @@ OUT = ROOT / "out"
 OUT.mkdir(exist_ok=True)
 
 
-def run(csv_file, spec_file, use_llm):
+def run(csv_file, spec_file, use_llm, allow_missing):
     if not csv_file:
         return "⚠ 请先上传标注结果 CSV", None
 
     try:
-        items, anns = load_from_csv(csv_file)
+        items, anns = load_from_csv(csv_file, allow_missing=allow_missing)
     except Exception as e:
         return f"⚠ 读数据失败：{e}", None
 
@@ -79,12 +79,15 @@ with gr.Blocks(title="标注质检台") as demo:
     llm_in = gr.Checkbox(
         label="启用第三方复核（本地模型，每条 30-60 秒）", value=False
     )
+    missing_in = gr.Checkbox(
+        label="允许标注者漏标（真实众包数据建议勾选）", value=False
+    )
     btn = gr.Button("开始分析", variant="primary")
 
     preview = gr.Markdown()
     file_out = gr.File(label="下载报告")
 
-    btn.click(run, [csv_in, spec_in, llm_in], [preview, file_out])
+    btn.click(run, [csv_in, spec_in, llm_in, missing_in], [preview, file_out])
 
     gr.Markdown(
         "**CSV 格式**：`id, text, annotator, label`，一行代表一个人对一条样本的标注。\n\n"

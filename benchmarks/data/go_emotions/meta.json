@@ -1,0 +1,19 @@
+{
+  "dataset": "GoEmotions (raw, single-label subset)",
+  "source": "https://huggingface.co/datasets/google-research-datasets/go_emotions",
+  "license": "Apache-2.0",
+  "citation": "Demszky et al., 2020, arXiv:2005.00547",
+  "conversion": "只保留恰好一个情绪标签为 1 的评分（多标签与全 0 丢弃）；丢弃多标签/空标签行 39405 条；保留标注数 >= 20 的标注者；每条样本至少 2 个评分。",
+  "labels_origin": "28 个 Reddit 情绪类别（含 neutral）",
+  "identity_tracking": true,
+  "note": "标注者 ID 来自原始 rater_id，跨样本保持一致。",
+  "items": 1000,
+  "annotators": 77,
+  "annotations": 3285,
+  "annotations_per_item": 3.29,
+  "annotator_annotation_counts": {
+    "min": 1,
+    "median": 37,
+    "max": 154
+  }
+}

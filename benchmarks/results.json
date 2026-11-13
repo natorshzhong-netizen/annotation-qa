@@ -1,0 +1,183 @@
+[
+  {
+    "name": "go_emotions",
+    "dataset": "GoEmotions (raw, single-label subset)",
+    "source": "https://huggingface.co/datasets/google-research-datasets/go_emotions",
+    "license": "Apache-2.0",
+    "items": 10000,
+    "annotators": 80,
+    "annotations": 32272,
+    "labels": 28,
+    "identity_tracking": true,
+    "metric": "Krippendorff's α",
+    "agreement": 0.2722,
+    "ci": [
+      0.2645,
+      0.2794
+    ],
+    "disputes": 7484,
+    "dispute_counts": {
+      "规范未覆盖": 2618,
+      "系统性偏差": 219,
+      "个别错误": 4647
+    },
+    "flagged_annotators": [
+      {
+        "name": "r24",
+        "label": "neutral",
+        "count": 171,
+        "opportunities": 768,
+        "dominance": 0.649,
+        "q_value": 6.381810161157909e-61
+      },
+      {
+        "name": "r33",
+        "label": "neutral",
+        "count": 137,
+        "opportunities": 637,
+        "dominance": 0.737,
+        "q_value": 1.299187228433747e-67
+      },
+      {
+        "name": "r43",
+        "label": "neutral",
+        "count": 13,
+        "opportunities": 50,
+        "dominance": 0.615,
+        "q_value": 0.00022153439106833522
+      }
+    ],
+    "flagged_total": 3
+  },
+  {
+    "name": "hatexplain",
+    "dataset": "HateXplain",
+    "source": "https://github.com/hate-alert/HateXplain",
+    "license": "MIT",
+    "items": 10000,
+    "annotators": 166,
+    "annotations": 29642,
+    "labels": 3,
+    "identity_tracking": true,
+    "metric": "Krippendorff's α",
+    "agreement": 0.4595,
+    "ci": [
+      0.4492,
+      0.4693
+    ],
+    "disputes": 5040,
+    "dispute_counts": {
+      "规范未覆盖": 532,
+      "系统性偏差": 1642,
+      "个别错误": 2866
+    },
+    "flagged_annotators": [
+      {
+        "name": "a4",
+        "label": "hatespeech",
+        "count": 326,
+        "opportunities": 2742,
+        "dominance": 0.684,
+        "q_value": 1.1407311245734985e-95
+      },
+      {
+        "name": "a211",
+        "label": "normal",
+        "count": 235,
+        "opportunities": 625,
+        "dominance": 0.791,
+        "q_value": 4.384091966201615e-68
+      },
+      {
+        "name": "a207",
+        "label": "offensive",
+        "count": 166,
+        "opportunities": 646,
+        "dominance": 0.819,
+        "q_value": 2.9483198614472662e-21
+      },
+      {
+        "name": "a202",
+        "label": "offensive",
+        "count": 159,
+        "opportunities": 747,
+        "dominance": 0.755,
+        "q_value": 3.992362510774966e-14
+      },
+      {
+        "name": "a212",
+        "label": "offensive",
+        "count": 140,
+        "opportunities": 595,
+        "dominance": 0.643,
+        "q_value": 2.2647439492712458e-05
+      },
+      {
+        "name": "a221",
+        "label": "normal",
+        "count": 125,
+        "opportunities": 537,
+        "dominance": 0.68,
+        "q_value": 4.70933968302244e-20
+      },
+      {
+        "name": "a205",
+        "label": "offensive",
+        "count": 118,
+        "opportunities": 442,
+        "dominance": 0.814,
+        "q_value": 1.3950822338697373e-14
+      },
+      {
+        "name": "a6",
+        "label": "offensive",
+        "count": 93,
+        "opportunities": 813,
+        "dominance": 0.806,
+        "q_value": 4.259442231922818e-11
+      },
+      {
+        "name": "a215",
+        "label": "normal",
+        "count": 83,
+        "opportunities": 278,
+        "dominance": 0.88,
+        "q_value": 4.62691170407397e-30
+      },
+      {
+        "name": "a213",
+        "label": "hatespeech",
+        "count": 76,
+        "opportunities": 331,
+        "dominance": 0.671,
+        "q_value": 1.9851560750604773e-17
+      }
+    ],
+    "flagged_total": 41
+  },
+  {
+    "name": "chaosnli",
+    "dataset": "ChaosNLI (MNLI portion, 5-slot subsample)",
+    "source": "https://huggingface.co/datasets/tasksource/chaos-mnli-ambiguity",
+    "license": "CC BY-NC 4.0",
+    "items": 1599,
+    "annotators": 5,
+    "annotations": 7995,
+    "labels": 3,
+    "identity_tracking": false,
+    "metric": "Fleiss' kappa",
+    "agreement": 0.3027,
+    "ci": [
+      0.2836,
+      0.3195
+    ],
+    "disputes": 1307,
+    "dispute_counts": {
+      "规范未覆盖": 132,
+      "系统性偏差": 0,
+      "个别错误": 1175
+    },
+    "flagged_annotators": [],
+    "flagged_total": 0
+  }
+]

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """把「争议样本」分成三类：规范未覆盖 / 系统性偏差 / 个别错误。
 
-分类思路（也是你面试要讲的那套）：
+分类思路：
 
 1. 先看这条样本有没有「多数派」。
    - 三个人各标一种 → 没有多数派，多半是规范没写清。
@@ -10,19 +10,23 @@
 2. 再看这个少数派是不是「惯犯」。
    - 统计每个人在所有争议里当少数派的次数，以及他偏的是哪一类。
    - 如果某个人当少数派的次数够多，而且高度集中在同一个标签上，
-     说明他不是随机错，而是对那一类有固定的理解偏差。
+     先看主导标签占比是否 >= 60%，再做二项检验并用 BH 校正多重比较。
+   - 标注者一多，只按次数判断会把随机波动误报成系统性偏差。
 
 3. 合起来判断。
    - 少数派的标签，正好是他平时的偏差标签 → 系统性偏差
    - 少数派没有这种习惯 → 个别错误（可能是疏忽，也可能是规范歧义）
 """
 
+import math
 from collections import Counter
 
 # 一个人至少当几次少数派，才值得怀疑他有系统性偏差
-MIN_MINORITY = 2
+MIN_MINORITY = 3
 # 他的少数派标注里，同一个标签至少占多少比例，才算「集中」
 DOMINANT_RATIO = 0.6
+# 二项检验的显著性水平（再做 BH 多重校正）
+ALPHA = 0.05
 
 
 def minority_profile(anns: dict[str, dict[str, str]],
@@ -40,20 +44,25 @@ def minority_profile(anns: dict[str, dict[str, str]],
         如果三个人标得各不相同（比如 A/B/C），就没有多数派，这条不计入。
     """
     names = sorted(anns)
-    profile = {x: {"count": 0, "labels": Counter()} for x in names}
+    profile = {x: {"count": 0, "labels": Counter(), "opportunities": 0} for x in names}
 
     for i in ids:
-        votes = {x: anns[x][i] for x in names}
+        votes = {x: anns[x][i] for x in names if i in anns[x]}
+        if len(votes) < 2:
+            continue
         counts = Counter(votes.values())
 
-        if len(counts) == 1:            # 全员一致，不是争议
+        if len(counts) == 1:            # 全员一致：每个人都有「不偏离」的机会
+            for x in votes:
+                profile[x]["opportunities"] += 1
             continue
         top = counts.most_common()
-        if len(top) >= 2 and top[0][1] == top[1][1]:   # 平票（三人各一种）
+        if len(top) >= 2 and top[0][1] == top[1][1]:   # 平票：每个人各标一种
             continue
 
         majority = top[0][0]
         for x, label in votes.items():
+            profile[x]["opportunities"] += 1
             if label != majority:
                 profile[x]["count"] += 1
                 profile[x]["labels"][label] += 1
@@ -61,25 +70,119 @@ def minority_profile(anns: dict[str, dict[str, str]],
     return profile
 
 
-def find_systematic(profile: dict[str, dict]) -> dict[str, str]:
-    """找出有系统性偏差的人，返回 {人: 他偏的那个标签}。
+def systematic_details(profile: dict[str, dict],
+                       min_minority: int = MIN_MINORITY,
+                       dominant_ratio: float = DOMINANT_RATIO,
+                       alpha: float = ALPHA,
+                       labels: list[str] | None = None) -> list[dict]:
+    """给每个标注者算「当少数派」的统计显著性。
 
-    判定条件（两个都要满足）：
-      1. 当少数派的次数 >= MIN_MINORITY
-      2. 他偏的标签里，最多的那个占比 >= DOMINANT_RATIO
+    零假设：这个人的少数派标签分布和全体标注者一样随机。
+    用留一平滑估计目标标签在全体少数派里的占比 p0，再做单侧二项正态近似检验，
+    最后用 Benjamini-Hochberg 控制多重比较的假阳性。
+
+    为什么不能只看次数
+        HateXplain 有 157 个标注者，只偏离两三次的人一大把；
+        固定阈值会把「随机波动」全部报成系统性偏差。
+    为什么不能只比整体偏离率
+        b 只在「商品咨询」这一类上偏，整体偏离率可能只有 8%，和平均水平差不多；
+        真正的信号是「他每次偏都偏向同一个标签」，所以检验的是标签集中度。
     """
-    result = {}
+    label_totals: Counter[str] = Counter()
+    for p in profile.values():
+        label_totals.update(p["labels"])
+    total_minority = sum(label_totals.values())
+    num_labels = max(1, len(labels) if labels else len(label_totals))
+
+    rows = []
     for name, p in profile.items():
-        if p["count"] < MIN_MINORITY or not p["labels"]:
+        n = p.get("opportunities", 0)
+        k = p["count"]
+        if n == 0 or not p["labels"]:
             continue
         label, times = p["labels"].most_common(1)[0]
-        if times / p["count"] >= DOMINANT_RATIO:
+        dominance = times / k if k else 0.0
+        rate = k / n
+
+        # 留一平滑：去掉本人后，这个标签在全体少数派里的占比
+        p0 = (label_totals[label] - times + 1) / (total_minority - k + num_labels)
+        p0 = min(max(p0, 1e-9), 1 - 1e-9)
+
+        mean = k * p0
+        sd = math.sqrt(k * p0 * (1 - p0))
+        z = (times - mean - 0.5) / sd if sd > 0 else 0.0
+        p_value = 0.5 * math.erfc(z / math.sqrt(2))
+
+        rows.append({
+            "name": name,
+            "label": label,
+            "count": k,
+            "opportunities": n,
+            "rate": rate,
+            "dominance": dominance,
+            "expected_share": p0,
+            "p_value": p_value,
+            "q_value": 1.0,
+            "systematic": False,
+        })
+
+    m = len(rows)
+    ordered = sorted(range(m), key=lambda idx: rows[idx]["p_value"])
+    previous = 1.0
+    for rank_idx in range(m - 1, -1, -1):
+        idx = ordered[rank_idx]
+        q = min(previous, rows[idx]["p_value"] * m / (rank_idx + 1))
+        rows[idx]["q_value"] = min(q, 1.0)
+        previous = rows[idx]["q_value"]
+
+    for row in rows:
+        row["systematic"] = (
+            row["q_value"] < alpha
+            and row["count"] >= min_minority
+            and row["dominance"] >= dominant_ratio
+        )
+    return rows
+
+
+def find_systematic(profile: dict[str, dict],
+                    min_minority: int = MIN_MINORITY,
+                    dominant_ratio: float = DOMINANT_RATIO,
+                    alpha: float = ALPHA,
+                    use_stats: bool = True,
+                    labels: list[str] | None = None) -> dict[str, str]:
+    """找出有系统性偏差的人，返回 {人: 他偏的那个标签}。
+
+    判定条件（三个都要满足）：
+      1. 当少数派次数 >= min_minority
+      2. 他偏的标签里，最多的那个占比 >= dominant_ratio
+      3. 相对整体少数派比例显著偏高（BH 校正后 q < alpha）
+
+    没有 opportunities 字段的旧 profile 会退回只按前两条判断。
+    """
+    if use_stats and all("opportunities" in p for p in profile.values()):
+        return {
+            row["name"]: row["label"]
+            for row in systematic_details(
+                profile, min_minority, dominant_ratio, alpha, labels
+            )
+            if row["systematic"]
+        }
+
+    result = {}
+    for name, p in profile.items():
+        if p["count"] < min_minority or not p["labels"]:
+            continue
+        label, times = p["labels"].most_common(1)[0]
+        if times / p["count"] >= dominant_ratio:
             result[name] = label
     return result
 
 
 def classify_disputes(anns: dict[str, dict[str, str]],
-                      ids: list[str]) -> list[dict]:
+                      ids: list[str],
+                      min_minority: int = MIN_MINORITY,
+                      dominant_ratio: float = DOMINANT_RATIO,
+                      labels: list[str] | None = None) -> list[dict]:
     """给每条争议样本打上原因标签。
 
     返回
@@ -90,11 +193,15 @@ def classify_disputes(anns: dict[str, dict[str, str]],
     """
     names = sorted(anns)
     profile = minority_profile(anns, ids)
-    systematic = find_systematic(profile)
+    systematic = find_systematic(
+        profile, min_minority, dominant_ratio, labels=labels
+    )
 
     out = []
     for i in ids:
-        votes = {x: anns[x][i] for x in names}
+        votes = {x: anns[x][i] for x in names if i in anns[x]}
+        if len(votes) < 2:
+            continue
         counts = Counter(votes.values())
 
         if len(counts) == 1:
@@ -102,19 +209,19 @@ def classify_disputes(anns: dict[str, dict[str, str]],
 
         top = counts.most_common()
 
-        # 情况一：没有多数派（三人各标一种）
+        # 情况一：没有多数派（每个人各标一种）
         if len(top) >= 2 and top[0][1] == top[1][1]:
             out.append({
                 "id": i,
                 "votes": votes,
                 "category": "规范未覆盖",
-                "reason": "三人各标一种，没有多数派——多半是规范没写清这种情况怎么处理",
+                "reason": f"{len(votes)} 人各标一种，没有多数派——多半是规范没写清这种情况怎么处理",
             })
             continue
 
         # 情况二：有 2:1 的多数派
         majority = top[0][0]
-        minority_people = [x for x in names if votes[x] != majority]
+        minority_people = [x for x in votes if votes[x] != majority]
 
         # 少数派里，有没有人的标签正好撞上他自己的「老毛病」
         hit = [x for x in minority_people if systematic.get(x) == votes[x]]
@@ -175,7 +282,7 @@ def apply_third_opinion(classified: list[dict], items: dict, spec: str,
 
         counts = Counter(d["votes"].values())
         top = counts.most_common()
-        # 三人各标一种时没有多数派，不能拿 Counter 的第一个当多数
+        # 平票时没有多数派，不能拿 Counter 的第一个当多数
         has_majority = not (len(top) >= 2 and top[0][1] == top[1][1])
         majority = top[0][0] if has_majority else None
 
@@ -222,13 +329,15 @@ def confusion_pairs(anns: dict[str, dict[str, str]], ids: list[str]) -> dict:
     pairs: dict = {}
 
     for i in ids:
-        votes = {x: anns[x][i] for x in names}
+        votes = {x: anns[x][i] for x in names if i in anns[x]}
+        if len(votes) < 2:
+            continue
         counts = Counter(votes.values())
         if len(counts) == 1:
             continue
         top = counts.most_common()
         if len(top) >= 2 and top[0][1] == top[1][1]:
-            continue                        # 三人各一种，没有多数派
+            continue                        # 平票，没有多数派
 
         majority = top[0][0]
         for x, label in votes.items():
@@ -244,14 +353,14 @@ def confusion_pairs(anns: dict[str, dict[str, str]], ids: list[str]) -> dict:
 
 
 def action_items(classified: list[dict], anns: dict, ids: list[str],
-                 items: dict) -> list[dict]:
+                 items: dict, labels: list[str] | None = None) -> list[dict]:
     """把判定结果翻译成「人今天该干什么」。
 
     输出顺序 = 处理优先级：
         补规范 → 培训 → 人工裁决 → 加抽检
     """
     profile = minority_profile(anns, ids)
-    systematic = find_systematic(profile)
+    systematic = find_systematic(profile, labels=labels)
     actions = []
 
     # 1. 补规范
@@ -261,7 +370,7 @@ def action_items(classified: list[dict], anns: dict, ids: list[str],
         text = items.get(d["id"], "")
         actions.append({
             "type": "补规范",
-            "text": f'{d["id"]}「{text}」—— 三人各持一说，确认归哪类后写进规范',
+            "text": f'{d["id"]}「{text}」—— 没有多数派，确认归哪类后写进规范',
         })
 
     # 2. 培训（按人合并成一条）

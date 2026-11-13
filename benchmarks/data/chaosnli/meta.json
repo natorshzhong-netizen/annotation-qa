@@ -1,0 +1,20 @@
+{
+  "dataset": "ChaosNLI (MNLI portion, 5-slot subsample)",
+  "source": "https://huggingface.co/datasets/tasksource/chaos-mnli-ambiguity",
+  "upstream": "https://github.com/easonnie/ChaosNLI",
+  "license": "CC BY-NC 4.0",
+  "citation": "Nie et al., 2020, arXiv:2010.03532",
+  "conversion": "原始每条有 100 位标注者的标签分布；这里每条随机抽 5 个标签，作为 5 个标注槽。",
+  "labels_origin": "entailment / neutral / contradiction",
+  "identity_tracking": false,
+  "note": "槽位 s1..sN 不是固定的真人，跨样本没有身份连续性。因此这组数据只用于一致性指标，不用于「谁有系统性偏差」的归因。",
+  "items": 1000,
+  "annotators": 5,
+  "annotations": 5000,
+  "annotations_per_item": 5.0,
+  "annotator_annotation_counts": {
+    "min": 1000,
+    "median": 1000,
+    "max": 1000
+  }
+}

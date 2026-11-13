@@ -1,36 +1,54 @@
 # -*- coding: utf-8 -*-
-"""一致性度量 —— Day 1 你要写的就这四个函数。
+"""一致性度量：一致率、Cohen's / Fleiss' kappa、Krippendorff's alpha、bootstrap 区间。
 
-别去 pip install 任何统计库。这四个函数都用标准库实现，
-面试官问「kappa 怎么算的」时，你要能当场在纸上写出来。
+全部用标准库实现，不引入运行时依赖；测试里再用 scipy / scikit-learn 的
+参考实现做数值对拍，保证公式没有写偏。
 """
 
 import random
 from collections import Counter
 
 
-def pairwise_agreement(a: dict[str, str], b: dict[str, str], ids: list[str]) -> float:
+def co_rated_ids(a: dict[str, str], b: dict[str, str], ids: list[str] | None = None) -> list[str]:
+    """两个人共同标注过的样本 id，按字典序返回。"""
+    if ids is None:
+        return sorted(set(a) & set(b))
+    return [i for i in sorted(ids) if i in a and i in b]
+
+
+def is_complete(anns: dict[str, dict[str, str]], ids: list[str]) -> bool:
+    """是否所有标注者都标了全部样本（Fleiss' kappa 的前提）。"""
+    if not anns or not ids:
+        return False
+    target = set(ids)
+    return all(set(a) >= target for a in anns.values())
+
+
+def pairwise_agreement(a: dict[str, str], b: dict[str, str], ids: list[str] | None = None) -> float:
     """两个标注者的一致率（简单百分比）。
 
     参数
         a, b  : {样本id: 标签}
-        ids   : 要统计的样本 id 列表（顺序无所谓）
+        ids   : 要统计的样本 id 列表；None 表示取两人共同标注过的样本
 
     返回
         0.0 ~ 1.0 之间的小数。比如 30 条里 25 条一致 → 0.8333...
 
     注意
-        分母是 len(ids)，不是交集大小。缺样本请让 load.validate 先拦住。
+        分母是共同标注的样本数。两人没有共同标注时返回 0.0。
     """
+    common = co_rated_ids(a, b, ids)
+    if not common:
+        return 0.0
     same = 0
-    for i in ids:
+    for i in common:
         if a[i] == b[i]:
             same += 1
-    return same / len(ids)
+    return same / len(common)
 
 
 def cohen_kappa(a: dict[str, str], b: dict[str, str],
-                labels: list[str], ids: list[str]) -> float:
+                labels: list[str], ids: list[str] | None = None) -> float:
     """两个标注者的 Cohen's kappa。
 
     公式
@@ -51,16 +69,17 @@ def cohen_kappa(a: dict[str, str], b: dict[str, str],
         如果 pe == 1.0（比如两人都只标了一个类），分母为 0，
         这时直接返回 1.0 并写一行注释说明——别让程序崩。
     """
-    n = len(ids)
+    common = co_rated_ids(a, b, ids)
+    n = len(common)
     if n == 0:
         return 0.0
 
-    po = sum(1 for i in ids if a[i] == b[i]) / n
+    po = sum(1 for i in common if a[i] == b[i]) / n
 
     pe = 0.0
     for label in labels:
-        pa = sum(1 for i in ids if a[i] == label) / n
-        pb = sum(1 for i in ids if b[i] == label) / n
+        pa = sum(1 for i in common if a[i] == label) / n
+        pb = sum(1 for i in common if b[i] == label) / n
         pe += pa * pb
 
     if pe >= 1.0:          # 两人分布完全相同且退化成单一类别，避免除零
@@ -91,6 +110,11 @@ def fleiss_kappa(anns: dict[str, dict[str, str]],
     n = len(names)
     if n < 2 or not ids:
         return 0.0
+    if not is_complete(anns, ids):
+        raise ValueError(
+            "Fleiss' kappa 要求每个标注者都标全；"
+            "有缺失值时请改用 krippendorff_alpha（它支持缺标）。"
+        )
 
     # 每条样本的「一致程度」P_i
     P = []
@@ -124,7 +148,7 @@ def disputed_items(anns: dict[str, dict[str, str]],
            "split": "3:0:0" 之类可以不要，但建议带上 n_distinct},
           ...
         ]
-        按「分歧严重程度」排序：三人全不同 > 2:1 分裂。
+        按「分歧严重程度」排序：全员各不同 > 2:1 分裂。
         同一档内按 id 排。
 
     用途
@@ -133,7 +157,7 @@ def disputed_items(anns: dict[str, dict[str, str]],
     names = sorted(anns)
     out = []
     for i in ids:
-        votes = {x: anns[x][i] for x in names}
+        votes = {x: anns[x][i] for x in names if i in anns[x]}
         n_distinct = len(set(votes.values()))
         if n_distinct > 1:
             out.append({"id": i, "votes": votes, "n_distinct": n_distinct})
@@ -174,3 +198,84 @@ def bootstrap_kappa(anns: dict[str, dict[str, str]],
     lo = vals[int(0.025 * n_boot)]
     hi = vals[int(0.975 * n_boot) - 1]
     return lo, hi
+
+
+def krippendorff_alpha(anns: dict[str, dict[str, str]],
+                       labels: list[str],
+                       ids: list[str] | None = None) -> float:
+    """Krippendorff's alpha（名义尺度，支持缺标）。
+
+    为什么不用 Fleiss
+        Fleiss 要求「每个人都标了每一条」。真实众包数据里几乎做不到：
+        有人请假、有人漏标、不同人负责不同批次。Krippendorff 按
+        「可配对的标注值」计算，缺标不影响，是行业里更通用的选择。
+
+    公式
+        对每条样本 u，m_u 个标注值两两配对，构成重合矩阵 o：
+            o_ck += n_c * n_k / (m_u - 1)      （c ≠ k）
+            o_cc += n_c * (n_c - 1) / (m_u - 1)
+        n    = 重合矩阵总和（可配对标注值数）
+        D_o  = Σ_{c≠k} o_ck / n                      观察到的分歧
+        D_e  = Σ_{c≠k} n_c n_k / (n(n-1))            随机期望的分歧
+        alpha = 1 - D_o / D_e
+
+        名义尺度下 δ²(c,k) = 1（c≠k），所以上面直接数不同值。
+    """
+    names = sorted(anns)
+    if len(names) < 2:
+        return 0.0
+    if ids is None:
+        ids = sorted({i for a in anns.values() for i in a})
+
+    coincidence: dict[tuple[str, str], float] = {}
+    for i in ids:
+        values = [anns[x][i] for x in names if i in anns[x]]
+        m = len(values)
+        if m < 2:
+            continue
+        counts = Counter(values)
+        for c, nc in counts.items():
+            for k, nk in counts.items():
+                weight = nc * (nc - 1) if c == k else nc * nk
+                key = (c, k)
+                coincidence[key] = coincidence.get(key, 0.0) + weight / (m - 1)
+
+    n = sum(coincidence.values())
+    if n < 2:
+        return 0.0
+
+    d_o = sum(v for (c, k), v in coincidence.items() if c != k) / n
+
+    marginals: dict[str, float] = {}
+    for (c, _k), v in coincidence.items():
+        marginals[c] = marginals.get(c, 0.0) + v
+
+    d_e = sum(
+        marginals[c] * marginals[k]
+        for c in marginals
+        for k in marginals
+        if c != k
+    ) / (n * (n - 1))
+
+    if d_e == 0:          # 所有标注值都相同，没有可解释的随机分歧
+        return 1.0
+    return 1.0 - d_o / d_e
+
+
+def bootstrap_alpha(anns: dict[str, dict[str, str]],
+                    labels: list[str], ids: list[str],
+                    n_boot: int = 1000, seed: int = 42) -> tuple[float, float]:
+    """给 Krippendorff's alpha 算 95% bootstrap 区间（样本有放回重抽）。"""
+    ids = sorted(ids)
+    if not ids:
+        return 0.0, 0.0
+
+    rng = random.Random(seed)
+    n = len(ids)
+    vals = []
+    for _ in range(n_boot):
+        sample = [rng.choice(ids) for _ in range(n)]
+        vals.append(krippendorff_alpha(anns, labels, sample))
+
+    vals.sort()
+    return vals[int(0.025 * n_boot)], vals[int(0.975 * n_boot) - 1]
